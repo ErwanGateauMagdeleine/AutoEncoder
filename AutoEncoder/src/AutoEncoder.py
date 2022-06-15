@@ -1,6 +1,8 @@
 from tensorflow.keras import Model
-from tensorflow.keras.layers import Input, Conv2D, ReLU, BatchNormalization, Flatten, Dense
+from tensorflow.keras.layers import Input, Conv2D, ReLU, BatchNormalization, Flatten, Dense, \
+                                    Reshape, Conv2DTranspose, Activation
 from tensorflow.keras import backend as K
+import numpy as np
 
 class AutoEncoder:
 
@@ -54,12 +56,103 @@ class AutoEncoder:
     def summary(self):
         """ Print the summary of the model. """
         self.encoder.summary()
+        self.decoder.summary()
 
     def _build(self):
         """ Build the complete model. """
         self._build_encoder()
-        #self._build_decoder()
+        self._build_decoder()
         #self._build_autoencoder()
+
+    def _build_decoder(self):
+        """ Build the Decoder. """
+        decoder_input = self._add_decoder_input()
+        dense_layer = self._add_dense_layer(decoder_input)
+        reshape_layer = self._add_reshape_layer(dense_layer)
+        conv_transpose_layers = self._add_conv_transpose_layers(reshape_layer)
+        decoder_output = self._add_decoder_output(conv_transpose_layers)
+        self.decoder = Model(decoder_input, decoder_output, name="decoder")
+    
+    def _add_decoder_input(self):
+        """ Creates the input layer of decoder. 
+        
+            Returns:
+                A tensor.
+        """
+        return Input(self.latent_space_dim, name="decoder_input")
+
+    def _add_dense_layer(self, decoder_input):
+        """ Add a dense layer.
+
+            Arguments:
+                decoder_input: A tensor.
+            Returns:
+                A tensor
+        """
+        num_neurons = np.prod(self._shape_before_bottleneck)  #[1, 2, 4] -> 8
+        return Dense(num_neurons, name="decoder_dense")(decoder_input)
+
+    def _add_reshape_layer(self, dense_layer):
+        """ Transform the flatten shaped tensor to a tensor with shape_before_bottleneck
+            shape.
+
+            Arguments:
+                dense_layer: A tensor.
+            Returns:
+                A tensor
+        """
+        return Reshape(self._shape_before_bottleneck)(dense_layer)
+
+    def _add_conv_transpose_layers(self, x):
+        """ Add convolutional transpose blocks. Loop through all the conv layers in reverse order
+            and stop at the first layer.
+
+            Arguments:
+                x: A tensor.
+            Returns:
+                A tensor
+        """
+        for layer_index in reversed(range(1, self._num_conv_layers)): 
+            x = self._add_conv_transpose_layer(layer_index, x)
+        return x
+
+    def _add_conv_transpose_layer(self, layer_index, x):
+        """ Adds a transpose convolutional block to a graph of layers. consisting of conv transpose 2d
+            + ReLU + batch normalization.
+
+            Arguments:
+                encoder_input: A tensor.
+            Returns:
+                A tensor
+        """
+        layer_num = self._num_conv_layers - layer_index
+        conv_transpose_layer = Conv2DTranspose(
+            filters=self.conv_filters[layer_index],
+            kernel_size=self.conv_kernels[layer_index],
+            strides=self.conv_strides[layer_index],
+            padding="same",
+            name=f"decoder_conv_transpose_layer_{layer_num}"
+        )
+
+        x = conv_transpose_layer(x)
+        x = ReLU(name=f"decoder_relu_{layer_num}")(x)
+        x = BatchNormalization(name=f"decoder_bn_{layer_num}")(x)
+
+        return x
+
+    def _add_decoder_output(self, x):
+        """ Add the output layer of the encoder.
+        """
+        conv_transpose_layer = Conv2DTranspose(
+            filters=1,
+            kernel_size=self.conv_kernels[0],
+            strides=self.conv_strides[0],
+            padding="same",
+            name=f"decoder_conv_transpose_layer_{self._num_conv_layers}"
+        )
+        x = conv_transpose_layer(x)
+        output_layer = Activation("sigmoid", name="sigmoid_layer")(x)
+        return output_layer
 
     def _build_encoder(self):
         """ Build the encoder. """
