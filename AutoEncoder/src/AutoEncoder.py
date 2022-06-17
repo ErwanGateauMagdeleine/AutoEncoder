@@ -1,3 +1,6 @@
+import os
+import pickle
+
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Input, Conv2D, ReLU, BatchNormalization, Flatten, Dense, \
                                     Reshape, Conv2DTranspose, Activation
@@ -5,6 +8,7 @@ from tensorflow.keras import backend as K
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.losses import MeanSquaredError
 import numpy as np
+
 
 class AutoEncoder:
 
@@ -75,6 +79,52 @@ class AutoEncoder:
                        batch_size=batch_size,
                        epochs=num_epochs,
                        shuffle=True)
+
+    def save(self, save_folder="."):
+        """ Save the trained model. """
+        self._create_folder_if_it_doesnt_exist(save_folder)
+        self._save_parameters(save_folder)
+        self._save_weigths(save_folder)
+
+    def _create_folder_if_it_doesnt_exist(self, folder):
+        """ Creates the folder in which the model will be saved if
+            it doesn't exists already. """
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+
+    def _save_parameters(self, save_folder):
+        """ Save the parameters of the model. """
+        parameters = [
+            self.input_shape,
+            self.conv_filters,
+            self.conv_kernels,
+            self.conv_strides,
+            self.latent_space_dim]
+        save_path = os.path.join(save_folder, "parameters.pkl")
+        with open(save_path, "wb") as f:
+            pickle.dump(parameters, f)
+
+    def _save_weigths(self, save_folder):
+        """Save the weigths of the model. """
+        save_path = os.path.join(save_folder, "weigths.h5")
+        self.model.save_weights(save_path)
+
+    @classmethod
+    def load(cls, save_folder="."):
+        """ Loads the model. """
+        parameters_path = os.path.join(save_folder, "parameters.pkl")
+        with open(parameters_path, "rb") as f:
+            parameters = pickle.load(f)
+        autoencoder = AutoEncoder(*parameters)
+
+        weigths_path =os.path.join(save_folder, "weigths.h5")
+        autoencoder.load_weigths(weigths_path)
+
+        return autoencoder
+
+    def load_weigths(self, weights_path):
+        """ Loads the weigths of the model. """
+        self.model.load_weights(weights_path)
 
     def _build(self):
         """ Build the complete model. """
